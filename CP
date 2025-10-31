@@ -1,0 +1,157 @@
+import sys
+
+# --- 1. Knowledge Base ---
+
+# Daftar Penyakit
+penyakit = {
+    'P1': 'Hawar Daun Bakteri',
+    'P2': 'Blas',
+    'P3': 'Busuk Batang',
+    'P4': 'Tungro'
+}
+
+# Daftar Gejala
+gejala = {
+    'G1': 'Daun menguning',
+    'G2': 'Bercak coklat pada daun',
+    'G3': 'Daun mengering',
+    'G4': 'Batang busuk dan berbau',
+    'G5': 'Pertumbuhan terhambat',
+    'G6': 'Daun berlubang',
+    'G7': 'Daun berkerut',
+    'G8': 'Tanaman kerdil'
+}
+
+# Rekomendasi Penanganan
+rekomendasi = {
+    'P1': 'Gunakan bakterisida, lakukan sanitasi lahan, dan gunakan varietas tahan.',
+    'P2': 'Gunakan fungisida (misal: trisiklazol), atur jarak tanam, dan lakukan pemupukan berimbang.',
+    'P3': 'Gunakan fungisida (misal: heksakonazol), perbaiki drainase lahan, dan lakukan rotasi tanaman.',
+    'P4': 'Kendalikan vektor (wereng hijau), lakukan sanitasi (cabut tanaman terinfeksi), dan gunakan varietas tahan.'
+}
+
+# Aturan (Rules) dengan Certainty Factor
+# Format: rules[gejala_kode] = {penyakit_kode: cf_rule}
+rules = {
+    'G1': {'P1': 0.6, 'P3': 0.5, 'P4': 0.8},
+    'G2': {'P1': 0.8, 'P2': 0.7},
+    'G3': {'P2': 0.8},
+    'G4': {'P3': 0.9},
+    'G5': {'P2': 0.6, 'P3': 0.7},
+    'G6': {'P1': 0.7},
+    'G7': {'P4': 0.9},
+    'G8': {'P4': 0.85}
+}
+
+# --- 2. Fungsi Kombinasi CF ---
+
+def cf_combine(cf_old, cf_new):
+    """
+    Menggabungkan dua Certainty Factor menggunakan rumus yang diberikan.
+    CF(H,E)_kombinasi = CF(H,E1) + CF(H,E2) * [1 - CF(H,E1)]
+    
+    Ini adalah rumus standar untuk menggabungkan dua bukti positif.
+    """
+    return cf_old + cf_new * (1 - cf_old)
+
+# --- 3. Mesin Inferensi (Forward Chaining) ---
+
+def diagnosa_penyakit():
+    print("===============================================")
+    print("🌾 Sistem Pakar Diagnosa Penyakit Tanaman Padi 🌾")
+    print("===============================================")
+    print("Masukkan nilai keyakinan Anda (CF) untuk setiap gejala.")
+    print("Rentang nilai: 0.0 (Tidak ada) s/d 1.0 (Sangat Yakin)")
+    print("-----------------------------------------------")
+
+    # Inisialisasi CF Penyakit
+    cf_penyakit = {p_kode: 0.0 for p_kode in penyakit}
+    
+    # Kumpulkan bukti (gejala) dari user
+    evidence = {}
+    for g_kode, g_nama in gejala.items():
+        while True:
+            try:
+                cf_user = float(input(f"  {g_nama} ({g_kode}): "))
+                if 0.0 <= cf_user <= 1.0:
+                    if cf_user > 0:
+                        evidence[g_kode] = cf_user
+                    break
+                else:
+                    print("  Input tidak valid. Masukkan nilai antara 0.0 dan 1.0.")
+            except ValueError:
+                print("  Input tidak valid. Masukkan angka (misal: 0.8).")
+
+    if not evidence:
+        print("\nTidak ada gejala yang dimasukkan. Diagnosa tidak dapat dilakukan.")
+        return
+
+    # --- Proses Forward Chaining ---
+    print("\n--- ⚙️ Proses Inferensi (Forward Chaining) ---")
+    
+    # Iterasi melalui setiap bukti (gejala) yang diberikan user
+    for g_kode, cf_user in evidence.items():
+        print(f"\nMemproses Gejala: {gejala[g_kode]} ({g_kode}) dengan CF User = {cf_user}")
+        
+        # Cek apakah gejala ini ada di dalam rules
+        if g_kode in rules:
+            # Terapkan semua aturan yang terpicu oleh gejala ini
+            for p_kode, cf_rule in rules[g_kode].items():
+                
+                # Hitung CF evidence (CF H,E) = CF(Rule) * CF(User)
+                cf_he = cf_rule * cf_user
+                
+                # Ambil CF lama dari penyakit
+                cf_old = cf_penyakit[p_kode]
+                
+                # Kombinasikan CF lama dengan CF baru
+                cf_combined = cf_combine(cf_old, cf_he)
+                
+                # Update CF penyakit
+                cf_penyakit[p_kode] = cf_combined
+                
+                print(f"  > Aturan {g_kode} -> {p_kode} (CF Rule: {cf_rule})")
+                print(f"    CF(H,E) = {cf_rule} * {cf_user} = {cf_he:.4f}")
+                print(f"    CF_old({penyakit[p_kode]}) = {cf_old:.4f}")
+                print(f"    CF_new = {cf_old:.4f} + {cf_he:.4f} * (1 - {cf_old:.4f}) = {cf_combined:.4f}")
+    
+    # --- 4. Tampilkan Hasil ---
+    print("\n--- 📊 Hasil Akhir Diagnosa ---")
+    
+    # Filter penyakit dengan CF > 0
+    hasil_diagnosa = {p_kode: cf for p_kode, cf in cf_penyakit.items() if cf > 0}
+    
+    if not hasil_diagnosa:
+        print("Tidak ada penyakit yang terdeteksi dengan CF > 0 berdasarkan gejala yang diberikan.")
+        return
+
+    # Ranking penyakit berdasarkan CF tertinggi
+    ranked_penyakit = sorted(hasil_diagnosa.items(), key=lambda item: item[1], reverse=True)
+
+    print("Ranking Penyakit (Berdasarkan CF tertinggi):")
+    for i, (p_kode, cf_final) in enumerate(ranked_penyakit):
+        nama_penyakit = penyakit[p_kode]
+        print(f"  {i+1}. {nama_penyakit} ({p_kode})")
+        print(f"     Tingkat Keyakinan: {cf_final * 100:.2f}%")
+
+    # --- 5. Kesimpulan dan Rekomendasi ---
+    p_tertinggi_kode, cf_tertinggi = ranked_penyakit[0]
+    nama_tertinggi = penyakit[p_tertinggi_kode]
+    rek_tertinggi = rekomendasi[p_tertinggi_kode]
+
+    print("\n--- 💡 Kesimpulan Diagnosa ---")
+    print(f"Berdasarkan gejala yang dimasukkan, penyakit yang paling mungkin adalah:")
+    print(f"**{nama_tertinggi} ({p_tertinggi_kode})** dengan tingkat keyakinan **{cf_tertinggi * 100:.2f}%**.")
+    print("\n--- 📝 Rekomendasi Penanganan ---")
+    print(f"{rek_tertinggi}")
+
+# --- 6. Main Loop ---
+if __name__ == "__main__":
+    while True:
+        diagnosa_penyakit()
+        print("\n-----------------------------------------------")
+        lagi = input("Apakah Anda ingin melakukan diagnosa lagi? (y/n): ").strip().lower()
+        if lagi != 'y':
+            print("Terima kasih telah menggunakan sistem pakar ini. Sampai jumpa!")
+            break
+        print("\n" * 2)
